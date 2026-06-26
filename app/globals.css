@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  background: #faf6ef;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: #1f2428;
+  background:
+    radial-gradient(circle at top left, rgba(232, 212, 182, 0.45), transparent 36rem),
+    linear-gradient(135deg, #fffdf8 0%, #faf6ef 48%, #f3eadf 100%);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.soft-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #d8c5aa transparent;
+}
+
+.glass-panel {
+  background: rgba(255, 252, 247, 0.86);
+  backdrop-filter: blur(24px);
+}
+
+.clinic-visual {
+  background:
+    linear-gradient(90deg, rgba(255, 252, 247, 0.94) 0%, rgba(255, 252, 247, 0.6) 42%, rgba(255, 252, 247, 0) 65%),
+    url("/clinic-room.svg");
+  background-size: cover;
+  background-position: center;
+}

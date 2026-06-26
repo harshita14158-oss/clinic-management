@@ -1,0 +1,13 @@
+
+> heal-dental-digital-clinic@0.1.0 dev
+> next dev --hostname 127.0.0.1 --port 3000
+
+   ▲ Next.js 15.5.18
+   - Local:        http://127.0.0.1:3000
+   - Network:      http://127.0.0.1:3000
+
+ ✓ Starting...
+ ✓ Ready in 2.1s
+ ○ Compiling /clinic/profile ...
+ ✓ Compiled /clinic/profile in 1050ms (616 modules)
+ GET /clinic/profile?patient=P-1024 200 in 1484ms

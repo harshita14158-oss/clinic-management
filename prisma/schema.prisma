@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  DOCTOR
+  ASSISTANT
+}
+
+enum ConsentStatus {
+  PENDING
+  ACCEPTED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role
+  createdAt DateTime @default(now())
+}
+
+model Patient {
+  id             String        @id @default(cuid())
+  patientCode    String        @unique
+  fullName       String
+  phone          String
+  email          String?
+  age            Int?
+  gender         String?
+  address        String?
+  chiefComplaint String?
+  medicalHistory String?
+  createdAt      DateTime      @default(now())
+  visits         Visit[]
+  appointments   Appointment[]
+}
+
+model Visit {
+  id                   String        @id @default(cuid())
+  visitToken            String        @unique
+  patientId             String
+  patient               Patient       @relation(fields: [patientId], references: [id])
+  diagnosis             String?
+  toothNumber           String?
+  recommendedTreatment  String?
+  clinicalNotes         String?
+  instructions          String?
+  nextVisitAt           DateTime?
+  consentStatus         ConsentStatus @default(PENDING)
+  consentAcceptedAt     DateTime?
+  createdAt             DateTime      @default(now())
+  medicines             Medicine[]
+  invoiceItems          InvoiceItem[]
+  documents             Document[]
+}
+
+model Medicine {
+  id        String @id @default(cuid())
+  visitId   String
+  visit     Visit  @relation(fields: [visitId], references: [id])
+  name      String
+  dosage    String
+  frequency String
+  duration  String
+}
+
+model InvoiceItem {
+  id          String @id @default(cuid())
+  visitId     String
+  visit       Visit  @relation(fields: [visitId], references: [id])
+  serviceName String
+  description String?
+  amount      Int
+}
+
+model Document {
+  id        String   @id @default(cuid())
+  visitId   String
+  visit     Visit    @relation(fields: [visitId], references: [id])
+  type      String
+  fileUrl   String
+  createdAt DateTime @default(now())
+}
+
+model Appointment {
+  id        String   @id @default(cuid())
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  startsAt  DateTime
+  purpose   String
+  status    String   @default("SCHEDULED")
+}
