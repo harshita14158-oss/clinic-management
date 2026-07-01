@@ -1,14 +1,14 @@
 {
   "version": 1,
   "functions": {
+    "/api/auth/signup": {},
     "/api/consents": {},
     "/api/auth/login": {},
-    "/api/qr": {},
     "/api/appointments": {},
+    "/api/qr": {},
     "/api/patient-portal/[visitToken]": {},
-    "/api/auth/signup": {},
-    "/api/patients": {},
     "/api/save-pdf": {},
+    "/api/patients": {},
     "/api/visits": {}
   }
 }

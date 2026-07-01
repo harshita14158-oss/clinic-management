@@ -160,6 +160,20 @@ function visitDisplayLabel(visit: VisitHistoryItem) {
   return visit.label?.startsWith("Visit ") ? visit.label : `Visit ${visit.id}`;
 }
 
+function hasSavedVisitDetails(visit: {
+  diagnosis?: string | null;
+  recommendedTreatment?: string | null;
+  invoiceItems?: Array<{ amount?: number }>;
+  documents?: Array<unknown>;
+}) {
+  return Boolean(
+    visit.diagnosis ||
+    visit.recommendedTreatment ||
+    visit.invoiceItems?.some((item) => Number(item.amount) > 0) ||
+    visit.documents?.length
+  );
+}
+
 function queueToPatient(item: QueuePatient): PatientRecord {
   return {
     id: item.id,
@@ -308,13 +322,14 @@ export function ClinicQueueDashboard() {
       nextQueue = queue;
     }
 
-    setQueueItems(nextQueue);
-    setDirectoryPatients(loadDirectoryPatients(nextQueue));
-
     async function loadSupabasePatients() {
       try {
         const response = await fetch("/api/patients");
-        if (!response.ok) return;
+        if (!response.ok) {
+          setQueueItems(nextQueue);
+          setDirectoryPatients(loadDirectoryPatients(nextQueue));
+          return;
+        }
         const result = await response.json() as {
           patients?: Array<{
             id: string;
@@ -327,25 +342,32 @@ export function ClinicQueueDashboard() {
             chiefComplaint?: string | null;
             medicalHistory?: string | null;
             createdAt?: string;
-            visits?: Array<{ id: string; visitToken: string; createdAt?: string; diagnosis?: string | null; recommendedTreatment?: string | null; invoiceItems?: Array<{ amount?: number }> }>;
+            visits?: Array<{ id: string; visitToken: string; createdAt?: string; diagnosis?: string | null; recommendedTreatment?: string | null; invoiceItems?: Array<{ amount?: number }>; documents?: Array<unknown> }>;
           }>;
         };
 
         const patients = result.patients ?? [];
-        if (!patients.length) return;
+        if (!patients.length) {
+          setQueueItems([]);
+          setDirectoryPatients([]);
+          return;
+        }
 
         const mappedQueue: QueuePatient[] = patients.map((patient) => {
           const checkedAt = patient.createdAt ?? new Date().toISOString();
+          const savedVisits = patient.visits ?? [];
+          const latestVisit = savedVisits[0];
+          const completed = savedVisits.some(hasSavedVisitDetails);
           return {
             id: patient.patientCode || patient.id,
             name: patient.fullName,
             initials: initialsFor(patient.fullName),
             phone: patient.phone,
             ageGender: [patient.gender, patient.age ? `${patient.age} Y` : ""].filter(Boolean).join(", ") || "Details pending",
-            complaint: patient.chiefComplaint || "Chief complaint not added yet",
+            complaint: latestVisit?.recommendedTreatment || latestVisit?.diagnosis || patient.chiefComplaint || "Chief complaint not added yet",
             checkedInAt: formatVisitDate(checkedAt),
             checkedAt,
-            status: "Waiting",
+            status: completed ? "Completed" : "Waiting",
             source: "Supabase"
           };
         });
@@ -382,7 +404,9 @@ export function ClinicQueueDashboard() {
         setQueueItems(mappedQueue);
         setDirectoryPatients(directory);
       } catch {
-        // Keep local fallback data when Supabase is unavailable.
+        // Keep local fallback data only when Supabase is unavailable.
+        setQueueItems(nextQueue);
+        setDirectoryPatients(loadDirectoryPatients(nextQueue));
       }
     }
 

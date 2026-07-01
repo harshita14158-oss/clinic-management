@@ -120,6 +120,28 @@ type VisitHistoryItem = {
   draft?: Partial<VisitDraft>;
 };
 
+type SupabasePatientRow = {
+  id: string;
+  patientCode?: string | null;
+  fullName: string;
+  phone: string;
+  email?: string | null;
+  age?: number | null;
+  gender?: string | null;
+  chiefComplaint?: string | null;
+  medicalHistory?: string | null;
+  createdAt?: string;
+  visits?: Array<{
+    id: string;
+    visitToken?: string | null;
+    createdAt?: string;
+    diagnosis?: string | null;
+    recommendedTreatment?: string | null;
+    invoiceItems?: Array<{ amount?: number | string }>;
+    documents?: Array<{ id?: string }>;
+  }>;
+};
+
 const patients: PatientRecord[] = [
   {
     id: "P-1024",
@@ -217,6 +239,47 @@ function defaultConsentAlternative() {
 
 function treatmentAmountKey(sectionId: number, treatment: string) {
   return `${sectionId}:${treatment}`;
+}
+
+function initialsFor(name: string) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "P";
+}
+
+function mapSupabasePatient(patient: SupabasePatientRow): PatientRecord {
+  const code = patient.patientCode || patient.id;
+  return {
+    id: code,
+    name: patient.fullName,
+    initials: initialsFor(patient.fullName),
+    phone: patient.phone,
+    email: patient.email || "Not added",
+    ageGender: [patient.gender, patient.age ? `${patient.age} Y` : ""].filter(Boolean).join(", ") || "Details pending",
+    checkedInAt: patient.createdAt
+      ? new Date(patient.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+      : "Not added",
+    source: "Supabase",
+    chiefComplaint: patient.chiefComplaint || "Not added",
+    medicalHistory: patient.medicalHistory || "Not added"
+  };
+}
+
+function mapSupabaseVisits(patient: SupabasePatientRow): VisitHistoryItem[] {
+  return (patient.visits ?? []).map((visit) => {
+    const total = (visit.invoiceItems ?? []).reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+    return {
+      id: visit.visitToken || visit.id,
+      label: "Saved Visit",
+      savedAt: visit.createdAt ?? new Date().toISOString(),
+      summary: visit.recommendedTreatment || visit.diagnosis || "Saved visit",
+      total,
+      documentCount: (visit.documents?.length ?? 0) || (total > 0 ? 3 : 2)
+    };
+  }).sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
 }
 
 function combineNonEmpty(values: string[]) {
@@ -842,12 +905,13 @@ export function ClinicProfileEntry() {
     : `healDentalVisitDraft:${selectedPatient.id}:${activeVisitId}`;
   const visitHistoryKey = `healDentalVisitHistory:${selectedPatient.id}`;
   const activeVisitLabel = activeVisitId === "current" ? "Saved Visit" : `Visit ${activeVisitId}`;
-  const portalToken = useMemo(() => `${selectedPatient.id}-${activeVisitId}`.replace(/[^A-Za-z0-9-]/g, ""), [selectedPatient.id, activeVisitId]);
+  const fallbackPortalToken = useMemo(() => `${selectedPatient.id}-${activeVisitId}`.replace(/[^A-Za-z0-9-]/g, ""), [selectedPatient.id, activeVisitId]);
 
   const [notice, setNotice] = useState("");
   const [settings, setSettings] = useState<ClinicSettings>(defaultClinicSettings);
   const [generatedDocument, setGeneratedDocument] = useState<GeneratedDocument | null>(null);
   const [portalReady, setPortalReady] = useState(false);
+  const [resolvedVisitToken, setResolvedVisitToken] = useState("");
   const [copiedPortal, setCopiedPortal] = useState(false);
   const [summaryGenerated, setSummaryGenerated] = useState(false);
   const [consentGenerated, setConsentGenerated] = useState(false);
@@ -897,16 +961,43 @@ export function ClinicProfileEntry() {
   useEffect(() => {
     setSettings(loadClinicSettings());
     const saved = window.localStorage.getItem(`healDentalPatient:${patientId}`);
-    if (!saved) {
-      setSavedPatient(null);
-      return;
-    }
 
     try {
-      setSavedPatient(JSON.parse(saved) as PatientRecord);
+      setSavedPatient(saved ? JSON.parse(saved) as PatientRecord : null);
     } catch {
       setSavedPatient(null);
     }
+
+    async function loadSupabasePatient() {
+      try {
+        const response = await fetch("/api/patients");
+        if (!response.ok) return;
+        const result = await response.json() as { patients?: SupabasePatientRow[] };
+        const patient = (result.patients ?? []).find((item) => item.patientCode === patientId || item.id === patientId);
+        if (!patient) return;
+
+        const mappedPatient = mapSupabasePatient(patient);
+        const mappedVisits = mapSupabaseVisits(patient);
+        setSavedPatient(mappedPatient);
+        window.localStorage.setItem(`healDentalPatient:${mappedPatient.id}`, JSON.stringify(mappedPatient));
+        if (patient.id !== mappedPatient.id) {
+          window.localStorage.setItem(`healDentalDbPatientId:${mappedPatient.id}`, patient.id);
+        }
+        if (mappedVisits.length) {
+          window.localStorage.setItem(`healDentalVisitHistory:${mappedPatient.id}`, JSON.stringify(mappedVisits));
+          setVisitHistory(mappedVisits);
+        }
+        const latestVisitToken = mappedVisits[0]?.id;
+        if (latestVisitToken) {
+          window.localStorage.setItem(`healDentalVisitTokenByPatient:${mappedPatient.id}`, latestVisitToken);
+          setResolvedVisitToken(latestVisitToken);
+        }
+      } catch {
+        // Keep the local patient fallback when Supabase is unavailable.
+      }
+    }
+
+    loadSupabasePatient();
   }, [patientId]);
 
   useEffect(() => {
@@ -1004,11 +1095,13 @@ export function ClinicProfileEntry() {
       setUploadedFiles(draft.uploadedFiles ?? []);
       setSummaryGenerated(Boolean(draft.summaryGenerated));
       setConsentGenerated(Boolean(draft.consentGenerated));
-      setPortalReady(Boolean(window.localStorage.getItem(`healDentalPatientPortal:${portalToken}`)));
+      const savedVisitToken = window.localStorage.getItem(`healDentalVisitTokenByPatient:${selectedPatient.id}`);
+      const visiblePortalToken = savedVisitToken || resolvedVisitToken || fallbackPortalToken;
+      setPortalReady(Boolean(window.localStorage.getItem(`healDentalPatientPortal:${visiblePortalToken}`)));
     } catch {
       setNotice("Saved visit draft could not be restored. You can continue with a fresh visit.");
     }
-  }, [activeVisitId, portalToken, settings, visitDraftKey, visitHistory]);
+  }, [activeVisitId, fallbackPortalToken, resolvedVisitToken, selectedPatient.id, settings, visitDraftKey, visitHistory]);
 
   function resetVisitState() {
     setTreatmentSections([createTreatmentSection()]);
@@ -1068,14 +1161,15 @@ export function ClinicProfileEntry() {
     ] : [])
   ];
 
-  function generatePatientSummary() {
+  async function generatePatientSummary() {
     if (!hasVisitDetails) {
       setNotice("Add at least one clinical detail before generating the patient summary.");
       return;
     }
     setSummaryGenerated(true);
-    saveVisitDraft({ summaryGeneratedOverride: true });
-    publishPatientPortal({ summaryGeneratedOverride: true });
+    const draft = saveVisitDraft({ summaryGeneratedOverride: true, persist: false });
+    const token = await persistVisitToSupabase(draft);
+    publishPatientPortal({ summaryGeneratedOverride: true, tokenOverride: token });
     setNotice("Patient summary is ready. Patient portal QR and link are available on this page.");
   }
 
@@ -1084,7 +1178,7 @@ export function ClinicProfileEntry() {
       ? ""
       : window.localStorage.getItem(`healDentalVisitTokenByPatient:${selectedPatient.id}`) || "";
     return {
-      visitToken: savedVisitToken || patientPortalToken(),
+      visitToken: savedVisitToken || resolvedVisitToken || patientPortalToken(),
       patientName: selectedPatient.name,
       patientId: selectedPatient.id,
       patientPhone: selectedPatient.phone,
@@ -1160,6 +1254,7 @@ export function ClinicProfileEntry() {
     consentGeneratedOverride?: boolean;
     procedureCompletedOverride?: boolean;
     instructionsOverride?: string;
+    persist?: boolean;
   }) {
     const savedAt = new Date().toISOString();
     const draft: VisitDraft = {
@@ -1189,11 +1284,14 @@ export function ClinicProfileEntry() {
     window.localStorage.setItem("healDentalLatestVisitDraft", JSON.stringify({ patientId: selectedPatient.id, ...draft }));
     window.localStorage.setItem(`healDentalActiveVisit:${selectedPatient.id}`, activeVisitId);
     upsertVisitHistory(savedAt, draft);
-    void persistVisitToSupabase(draft);
-    return savedAt;
+    if (options?.persist !== false) {
+      void persistVisitToSupabase(draft);
+    }
+    return draft;
   }
 
   async function persistVisitToSupabase(draft: VisitDraft) {
+    const fallbackToken = patientPortalToken();
     try {
       const savedVisitToken = window.localStorage.getItem(`healDentalVisitTokenByPatient:${selectedPatient.id}`) || "";
       const nextVisitAt = draft.nextDate
@@ -1244,9 +1342,13 @@ export function ClinicProfileEntry() {
       const result = await response.json() as { visit?: { visitToken?: string } };
       if (result.visit?.visitToken) {
         window.localStorage.setItem(`healDentalVisitTokenByPatient:${selectedPatient.id}`, result.visit.visitToken);
+        setResolvedVisitToken(result.visit.visitToken);
+        return result.visit.visitToken;
       }
+      return savedVisitToken || resolvedVisitToken || fallbackToken;
     } catch {
       // Keep the existing local draft as a fallback when Supabase is unavailable.
+      return fallbackToken;
     }
   }
 
@@ -1271,17 +1373,22 @@ export function ClinicProfileEntry() {
     window.localStorage.setItem(visitHistoryKey, JSON.stringify(nextHistory));
   }
 
-  function patientPortalToken() {
-    return portalToken;
+  function patientPortalToken(tokenOverride?: string) {
+    if (tokenOverride) return tokenOverride;
+    if (typeof window !== "undefined") {
+      const savedVisitToken = window.localStorage.getItem(`healDentalVisitTokenByPatient:${selectedPatient.id}`);
+      if (savedVisitToken) return savedVisitToken;
+    }
+    return resolvedVisitToken || fallbackPortalToken;
   }
 
-  function patientPortalPath() {
-    return `/p/${patientPortalToken()}`;
+  function patientPortalPath(tokenOverride?: string) {
+    return `/p/${patientPortalToken(tokenOverride)}`;
   }
 
-  function patientPortalUrl() {
-    if (typeof window === "undefined") return patientPortalPath();
-    return `${window.location.origin}${patientPortalPath()}`;
+  function patientPortalUrl(tokenOverride?: string) {
+    if (typeof window === "undefined") return patientPortalPath(tokenOverride);
+    return `${window.location.origin}${patientPortalPath(tokenOverride)}`;
   }
 
   function patientPortalQrUrl() {
@@ -1292,10 +1399,11 @@ export function ClinicProfileEntry() {
     documentKind?: PdfKind;
     summaryGeneratedOverride?: boolean;
     visitData?: DynamicVisitPdfData;
+    tokenOverride?: string;
   }) {
     if (!hasVisitDetails) return "";
 
-    const token = patientPortalToken();
+    const token = patientPortalToken(options?.tokenOverride);
     const generatedAt = new Date().toISOString();
     const visitData = options?.visitData ?? currentVisitPdfData();
     const documentKinds: PdfKind[] = [
@@ -1333,7 +1441,7 @@ export function ClinicProfileEntry() {
     window.localStorage.setItem(`healDentalLatestPatientPortal:${selectedPatient.id}`, token);
     window.localStorage.setItem(`healDentalPatientPortalForVisit:${selectedPatient.id}:${activeVisitId}`, token);
     setPortalReady(true);
-    return patientPortalPath();
+    return patientPortalPath(token);
   }
 
   async function copyPatientPortalLink() {

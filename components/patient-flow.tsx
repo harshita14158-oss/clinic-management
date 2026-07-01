@@ -2,7 +2,7 @@
 
 import { ArrowLeft, ArrowRight, Bell, CalendarDays, Check, ChevronDown, ClipboardList, Download, FileText, Globe2, Headphones, IndianRupee, Lock, Mail, MapPin, Phone, Pill, ShieldCheck, Signal, User, UserRound, Wifi } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
-import { downloadPdf, downloadVisitPdf, DynamicVisitPdfData, PdfKind } from "@/lib/pdf";
+import { downloadVisitPdf, DynamicVisitPdfData, PdfKind } from "@/lib/pdf";
 import { Logo } from "./logo";
 import { ClinicSettings, defaultClinicSettings, loadClinicSettings, phoneHref } from "@/lib/clinic-settings";
 
@@ -1189,7 +1189,6 @@ export function ConsentScreen() {
                 }));
               }
               setSubmitted(true);
-              downloadPdf("consent");
             }}
             className={`mt-5 flex min-h-[52px] w-full items-center justify-center rounded-[20px] px-5 py-4 text-sm font-semibold shadow-soft ${accepted ? "bg-ink text-white" : "bg-white text-muted border border-softgold/70"}`}
           >
@@ -1198,7 +1197,7 @@ export function ConsentScreen() {
 
           {submitted && (
             <p className="mt-4 rounded-[20px] border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
-              Consent accepted. A PDF copy has been generated.
+              Consent accepted. You can download a PDF copy later from your visit report.
             </p>
           )}
         </section>
