@@ -2,7 +2,7 @@
 
 A calm, minimal V1 clinic workflow prototype built with Next.js, React, Tailwind CSS, Node.js API routes and a Prisma/PostgreSQL data model.
 
-## Run locally
+## Run this locally
 
 ```bash
 npm install
