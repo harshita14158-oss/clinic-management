@@ -1080,7 +1080,11 @@ export function ClinicProfileEntry() {
   }
 
   function currentVisitPdfData() {
+    const savedVisitToken = typeof window === "undefined"
+      ? ""
+      : window.localStorage.getItem(`healDentalVisitTokenByPatient:${selectedPatient.id}`) || "";
     return {
+      visitToken: savedVisitToken || patientPortalToken(),
       patientName: selectedPatient.name,
       patientId: selectedPatient.id,
       patientPhone: selectedPatient.phone,
@@ -1185,7 +1189,65 @@ export function ClinicProfileEntry() {
     window.localStorage.setItem("healDentalLatestVisitDraft", JSON.stringify({ patientId: selectedPatient.id, ...draft }));
     window.localStorage.setItem(`healDentalActiveVisit:${selectedPatient.id}`, activeVisitId);
     upsertVisitHistory(savedAt, draft);
+    void persistVisitToSupabase(draft);
     return savedAt;
+  }
+
+  async function persistVisitToSupabase(draft: VisitDraft) {
+    try {
+      const savedVisitToken = window.localStorage.getItem(`healDentalVisitTokenByPatient:${selectedPatient.id}`) || "";
+      const nextVisitAt = draft.nextDate
+        ? new Date(`${draft.nextDate}T${draft.nextTime || "00:00"}:00`).toISOString()
+        : "";
+      const visitNotes = [
+        draft.clinicalFindings ? `Clinical findings:\n${draft.clinicalFindings}` : "",
+        draft.clinicalNotes ? `Clinical notes:\n${draft.clinicalNotes}` : "",
+        draft.investigations.some((item) => item.name)
+          ? `Investigations advised:\n${draft.investigations
+              .filter((item) => item.name)
+              .map((item) => [item.name, item.area, item.reason].filter(Boolean).join(" - "))
+              .join("\n")}`
+          : ""
+      ].filter(Boolean).join("\n\n");
+
+      const response = await fetch("/api/visits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patientId: selectedPatient.id,
+          visitToken: savedVisitToken || undefined,
+          diagnosis: draft.diagnosis,
+          toothNumber: draft.tooth,
+          recommendedTreatment: draft.treatments.join(", "),
+          clinicalNotes: visitNotes || draft.clinicalNotes,
+          instructions: draft.instructions,
+          nextVisitAt,
+          medicines: draft.medicines
+            .filter((item) => item.name)
+            .map((item) => ({
+              name: item.name,
+              dosage: item.dosage,
+              frequency: item.frequency,
+              duration: item.duration
+            })),
+          invoiceItems: invoiceRows
+            .filter((item) => item.service && Number(item.amount) > 0)
+            .map((item) => ({
+              serviceName: item.service,
+              description: item.description || null,
+              amount: Number(item.amount)
+            }))
+        })
+      });
+
+      if (!response.ok) return;
+      const result = await response.json() as { visit?: { visitToken?: string } };
+      if (result.visit?.visitToken) {
+        window.localStorage.setItem(`healDentalVisitTokenByPatient:${selectedPatient.id}`, result.visit.visitToken);
+      }
+    } catch {
+      // Keep the existing local draft as a fallback when Supabase is unavailable.
+    }
   }
 
   function upsertVisitHistory(savedAt: string, draft: VisitDraft) {

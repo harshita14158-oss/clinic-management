@@ -25,6 +25,7 @@ type DynamicInvoiceItem = {
 };
 
 export type DynamicVisitPdfData = {
+  visitToken?: string;
   patientName: string;
   patientId: string;
   patientPhone: string;

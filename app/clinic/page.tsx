@@ -5,36 +5,38 @@ import type { FormEvent, ReactNode } from "react";
 import { useState } from "react";
 import { Logo } from "@/components/logo";
 
-const CLINIC_LOGIN = "healdentaltld@gmail.com";
-const CLINIC_PHONE = "9353403855";
-const CLINIC_PASSWORD = "Heal@2026";
-
 export default function ClinicLoginPage() {
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setIsSubmitting(true);
+    setError("");
 
-    const normalizedLogin = login.trim().toLowerCase();
-    const normalizedPhone = login.replace(/\D/g, "");
-    const validLogin = normalizedLogin === CLINIC_LOGIN || normalizedPhone === CLINIC_PHONE;
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: login.trim(), password })
+      });
+      const result = await response.json() as { error?: string };
 
-    if (!validLogin || password !== CLINIC_PASSWORD) {
-      setError("Please enter the clinic email or phone number with the correct password.");
-      return;
+      if (!response.ok) {
+        setError(result.error || "Please enter the correct email and password.");
+        return;
+      }
+
+      const next = new URLSearchParams(window.location.search).get("next") || "/clinic/dashboard";
+      window.location.assign(next);
+    } catch {
+      setError("Could not sign in. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    window.localStorage.setItem(
-      "healDentalClinicSession",
-      JSON.stringify({
-        login: normalizedLogin || normalizedPhone,
-        signedInAt: new Date().toISOString()
-      })
-    );
-    window.location.assign("/clinic/dashboard");
   }
 
   return (
@@ -89,7 +91,7 @@ export default function ClinicLoginPage() {
                 onSubmit={handleSubmit}
               >
                 <label className="block">
-                  <span className="mb-3 block text-lg font-semibold text-ink">Email or Phone</span>
+                  <span className="mb-3 block text-lg font-semibold text-ink">Email</span>
                   <div className="relative">
                     <Mail className="pointer-events-none absolute left-5 top-1/2 h-6 w-6 -translate-y-1/2 text-muted" />
                     <input
@@ -101,7 +103,7 @@ export default function ClinicLoginPage() {
                         setError("");
                       }}
                       className="h-16 w-full rounded-2xl border border-softgold/70 bg-white px-14 text-base text-ink outline-none transition placeholder:text-muted/70 focus:border-gold focus:ring-4 focus:ring-softgold/30"
-                      placeholder="Enter your email or phone number"
+                      placeholder="Enter your clinic email"
                     />
                   </div>
                 </label>
@@ -142,8 +144,8 @@ export default function ClinicLoginPage() {
                   </div>
                 ) : null}
 
-                <button type="submit" className="flex min-h-[70px] w-full items-center justify-center gap-4 rounded-2xl bg-ink px-6 text-xl font-bold text-white shadow-[0_12px_28px_rgba(0,0,0,0.18)] transition hover:bg-black">
-                  Sign In
+                <button type="submit" disabled={isSubmitting} className="flex min-h-[70px] w-full items-center justify-center gap-4 rounded-2xl bg-ink px-6 text-xl font-bold text-white shadow-[0_12px_28px_rgba(0,0,0,0.18)] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60">
+                  {isSubmitting ? "Signing In..." : "Sign In"}
                   <ArrowRight className="h-8 w-8" />
                 </button>
               </form>

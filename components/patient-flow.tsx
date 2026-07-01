@@ -1,9 +1,8 @@
 "use client";
 
 import { ArrowLeft, ArrowRight, Bell, CalendarDays, Check, ChevronDown, ClipboardList, Download, FileText, Globe2, Headphones, IndianRupee, Lock, Mail, MapPin, Phone, Pill, ShieldCheck, Signal, User, UserRound, Wifi } from "lucide-react";
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { downloadPdf, downloadVisitPdf, DynamicVisitPdfData, PdfKind } from "@/lib/pdf";
-import { patient } from "@/lib/data";
 import { Logo } from "./logo";
 import { ClinicSettings, defaultClinicSettings, loadClinicSettings, phoneHref } from "@/lib/clinic-settings";
 
@@ -50,7 +49,7 @@ type PatientPortalRecord = {
 };
 
 const defaultConsent: ConsentDraft = {
-  patientName: patient.name,
+  patientName: "Patient",
   patientPhone: `+91 ${defaultClinicSettings.phone}`,
   title: "Dental Procedure Consent",
   treatmentDetails: ["Treatment details will appear here after the clinic generates the consent form."],
@@ -198,6 +197,8 @@ export function Registration() {
     referralSource?: string;
   } | null>(null);
   const [repeatLookupMessage, setRepeatLookupMessage] = useState("");
+  const [registrationError, setRegistrationError] = useState("");
+  const [isRegistering, setIsRegistering] = useState(false);
   const combinedHistory = [...medicalHistory.filter((item) => item !== "Other"), otherHistory.trim()].filter(Boolean).join(", ");
 
   function toggleMedicalHistory(item: string) {
@@ -276,6 +277,62 @@ export function Registration() {
     });
 
     window.location.assign(`/checked?${params.toString()}`);
+  }
+
+  async function submitRegistration(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setRegistrationError("");
+    setIsRegistering(true);
+
+    const form = new FormData(event.currentTarget);
+    const payload = {
+      fullName: String(form.get("name") || ""),
+      phone: String(form.get("phone") || ""),
+      email: String(form.get("email") || ""),
+      age: String(form.get("age") || ""),
+      gender: String(form.get("gender") || ""),
+      address: String(form.get("address") || ""),
+      chiefComplaint: String(form.get("complaint") || ""),
+      medicalHistory: combinedHistory || "None"
+    };
+
+    try {
+      const response = await fetch("/api/patients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json() as {
+        patient?: { patientCode?: string; fullName?: string; phone?: string; email?: string; age?: number; gender?: string; address?: string; chiefComplaint?: string; medicalHistory?: string };
+        visitToken?: string;
+        error?: string;
+      };
+
+      if (!response.ok || !result.patient) {
+        setRegistrationError(result.error || "Could not complete check-in. Please contact reception.");
+        return;
+      }
+
+      const params = new URLSearchParams({
+        patientId: result.patient.patientCode || patientId,
+        checkedAt,
+        visitToken: result.visitToken || "",
+        name: result.patient.fullName || payload.fullName,
+        phone: result.patient.phone || payload.phone,
+        email: result.patient.email || payload.email,
+        age: result.patient.age ? String(result.patient.age) : payload.age,
+        gender: result.patient.gender || payload.gender,
+        address: result.patient.address || payload.address,
+        complaint: result.patient.chiefComplaint || payload.chiefComplaint,
+        history: result.patient.medicalHistory || payload.medicalHistory,
+        referralSource: String(form.get("referralSource") || "")
+      });
+      window.location.assign(`/checked?${params.toString()}`);
+    } catch {
+      setRegistrationError("Could not connect to clinic check-in. Please contact reception.");
+    } finally {
+      setIsRegistering(false);
+    }
   }
 
   return (
@@ -365,7 +422,7 @@ export function Registration() {
           )}
         </section>
 
-        <form className="rounded-[28px] border border-softgold/70 bg-white/78 p-5 shadow-soft backdrop-blur sm:p-9" action="/checked">
+        <form className="rounded-[28px] border border-softgold/70 bg-white/78 p-5 shadow-soft backdrop-blur sm:p-9" onSubmit={submitRegistration}>
           <input type="hidden" name="patientId" value={patientId} />
           <input type="hidden" name="checkedAt" value={checkedAt} />
           <input type="hidden" name="history" value={combinedHistory || "None"} />
@@ -494,8 +551,14 @@ export function Registration() {
             </label>
           </FormSection>
 
-          <button type="submit" className="mt-8 flex min-h-[64px] w-full items-center justify-center gap-4 rounded-2xl bg-ink px-6 text-xl font-bold text-white shadow-[0_12px_28px_rgba(0,0,0,0.18)] transition hover:bg-black">
-            Continue
+          {registrationError ? (
+            <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {registrationError}
+            </div>
+          ) : null}
+
+          <button type="submit" disabled={isRegistering} className="mt-8 flex min-h-[64px] w-full items-center justify-center gap-4 rounded-2xl bg-ink px-6 text-xl font-bold text-white shadow-[0_12px_28px_rgba(0,0,0,0.18)] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60">
+            {isRegistering ? "Checking In..." : "Continue"}
             <ArrowRight className="h-7 w-7" />
           </button>
 
@@ -522,7 +585,8 @@ export function CheckedIn() {
     history: "",
     referralSource: "",
     patientId: "",
-    checkedAt: ""
+    checkedAt: "",
+    visitToken: ""
   });
 
   useEffect(() => {
@@ -540,6 +604,7 @@ export function CheckedIn() {
       complaint: params.get("complaint") || "Not added",
       history: params.get("history") || "None",
       referralSource: params.get("referralSource") || "Not added",
+      visitToken: params.get("visitToken") || "",
       patientId,
       checkedAt
     };
@@ -573,6 +638,9 @@ export function CheckedIn() {
     };
 
     window.localStorage.setItem(`healDentalPatient:${patientId}`, JSON.stringify(patientRecord));
+    if (nextCheckIn.visitToken) {
+      window.localStorage.setItem(`healDentalVisitTokenByPatient:${patientId}`, nextCheckIn.visitToken);
+    }
     const savedQueue = window.localStorage.getItem("healDentalQueuePatients");
     let queue: typeof queuePatient[] = [];
     try {
@@ -714,18 +782,94 @@ export function PatientPortalScreen() {
   const [reviewed, setReviewed] = useState(false);
 
   useEffect(() => {
-    const token = decodeURIComponent(window.location.pathname.split("/").filter(Boolean).pop() || "");
+    async function loadPortal() {
+      const token = decodeURIComponent(window.location.pathname.split("/").filter(Boolean).pop() || "");
     const saved = window.localStorage.getItem(`healDentalPatientPortal:${token}`);
-    if (!saved) {
-      setMissing(true);
-      return;
+
+      if (saved) {
+        try {
+          setPortal(JSON.parse(saved) as PatientPortalRecord);
+          return;
+        } catch {
+          // Fall through to Supabase fetch.
+        }
+      }
+
+      try {
+        const response = await fetch(`/api/patient-portal/${encodeURIComponent(token)}`);
+        const result = await response.json() as { visit?: {
+          visitToken: string;
+          patient?: { patientCode?: string; fullName?: string; phone?: string; age?: number; gender?: string; chiefComplaint?: string };
+          diagnosis?: string;
+          toothNumber?: string;
+          recommendedTreatment?: string;
+          clinicalNotes?: string;
+          instructions?: string;
+          nextVisitAt?: string;
+          medicines?: Array<{ name: string; dosage: string; frequency: string; duration: string }>;
+          invoiceItems?: Array<{ serviceName: string; amount: number }>;
+          documents?: Array<{ type: string }>;
+          createdAt?: string;
+        } };
+
+        if (!response.ok || !result.visit) {
+          setMissing(true);
+          return;
+        }
+
+        const visit = result.visit;
+        const patientRecord = visit.patient;
+        const invoiceItems = visit.invoiceItems ?? [];
+        const invoiceTotal = invoiceItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+        setPortal({
+          token,
+          patientId: patientRecord?.patientCode || "",
+          visitId: visit.visitToken,
+          patientName: patientRecord?.fullName || "Patient",
+          patientPhone: patientRecord?.phone || "",
+          ageGender: [patientRecord?.gender, patientRecord?.age ? `${patientRecord.age} Y` : ""].filter(Boolean).join(", "),
+          generatedAt: visit.createdAt || new Date().toISOString(),
+          clinicPhone: defaultClinicSettings.phone,
+          clinicEmail: defaultClinicSettings.email,
+          clinicWebsite: defaultClinicSettings.website,
+          clinicName: defaultClinicSettings.clinicName,
+          clinicDisplayName: defaultClinicSettings.clinicDisplayName,
+          clinicAddress: defaultClinicSettings.address,
+          clinicMapsUrl: defaultClinicSettings.mapsUrl,
+          googleReviewUrl: defaultClinicSettings.googleReviewUrl,
+          documentKinds: ["summary", "prescription", ...(invoiceTotal > 0 ? ["invoice" as PdfKind] : [])],
+          summaryGenerated: true,
+          consentGenerated: false,
+          data: {
+            visitToken: visit.visitToken,
+            patientName: patientRecord?.fullName || "Patient",
+            patientId: patientRecord?.patientCode || "",
+            patientPhone: patientRecord?.phone || "",
+            ageGender: [patientRecord?.gender, patientRecord?.age ? `${patientRecord.age} Y` : ""].filter(Boolean).join(", "),
+            chiefComplaint: patientRecord?.chiefComplaint || "",
+            clinicalFindings: visit.clinicalNotes || "",
+            diagnosis: visit.diagnosis || "",
+            tooth: visit.toothNumber || "",
+            treatments: visit.recommendedTreatment ? [visit.recommendedTreatment] : [],
+            clinicalNotes: visit.clinicalNotes || "",
+            medicines: visit.medicines ?? [],
+            investigations: [],
+            instructions: visit.instructions || "",
+            nextVisit: visit.nextVisitAt ? formatCheckInDateTime(visit.nextVisitAt) : "",
+            invoiceItems: invoiceItems.map((item) => ({ service: item.serviceName, amount: String(item.amount) })),
+            invoiceTotal,
+            paymentStatus: invoiceTotal > 0 ? "Paid" : "",
+            consentBenefits: [],
+            consentRisks: [],
+            consentAlternatives: []
+          }
+        });
+      } catch {
+        setMissing(true);
+      }
     }
 
-    try {
-      setPortal(JSON.parse(saved) as PatientPortalRecord);
-    } catch {
-      setMissing(true);
-    }
+    loadPortal();
   }, []);
 
   if (missing) {

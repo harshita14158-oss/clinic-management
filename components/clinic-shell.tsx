@@ -42,18 +42,11 @@ export function ClinicShell({
 
   useEffect(() => {
     setSettings(loadClinicSettings());
-    const session = window.localStorage.getItem("healDentalClinicSession");
-
-    if (!session) {
-      window.location.replace("/clinic");
-      return;
-    }
-
     setIsAuthorized(true);
   }, []);
 
-  function handleLogout() {
-    window.localStorage.removeItem("healDentalClinicSession");
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
     window.location.replace("/clinic");
   }
 

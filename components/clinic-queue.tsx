@@ -310,16 +310,120 @@ export function ClinicQueueDashboard() {
 
     setQueueItems(nextQueue);
     setDirectoryPatients(loadDirectoryPatients(nextQueue));
+
+    async function loadSupabasePatients() {
+      try {
+        const response = await fetch("/api/patients");
+        if (!response.ok) return;
+        const result = await response.json() as {
+          patients?: Array<{
+            id: string;
+            patientCode: string;
+            fullName: string;
+            phone: string;
+            email?: string | null;
+            age?: number | null;
+            gender?: string | null;
+            chiefComplaint?: string | null;
+            medicalHistory?: string | null;
+            createdAt?: string;
+            visits?: Array<{ id: string; visitToken: string; createdAt?: string; diagnosis?: string | null; recommendedTreatment?: string | null; invoiceItems?: Array<{ amount?: number }> }>;
+          }>;
+        };
+
+        const patients = result.patients ?? [];
+        if (!patients.length) return;
+
+        const mappedQueue: QueuePatient[] = patients.map((patient) => {
+          const checkedAt = patient.createdAt ?? new Date().toISOString();
+          return {
+            id: patient.patientCode || patient.id,
+            name: patient.fullName,
+            initials: initialsFor(patient.fullName),
+            phone: patient.phone,
+            ageGender: [patient.gender, patient.age ? `${patient.age} Y` : ""].filter(Boolean).join(", ") || "Details pending",
+            complaint: patient.chiefComplaint || "Chief complaint not added yet",
+            checkedInAt: formatVisitDate(checkedAt),
+            checkedAt,
+            status: "Waiting",
+            source: "Supabase"
+          };
+        });
+
+        const directory: DirectoryPatient[] = patients.map((patient) => {
+          const visits = (patient.visits ?? []).map((visit) => {
+            const total = (visit.invoiceItems ?? []).reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+            return {
+              id: visit.visitToken,
+              label: "Saved Visit",
+              savedAt: visit.createdAt ?? new Date().toISOString(),
+              summary: visit.recommendedTreatment || visit.diagnosis || "Saved visit",
+              total,
+              documentCount: total > 0 ? 3 : 2
+            };
+          });
+          return {
+            id: patient.patientCode || patient.id,
+            name: patient.fullName,
+            initials: initialsFor(patient.fullName),
+            phone: patient.phone,
+            email: patient.email || "Not added",
+            ageGender: [patient.gender, patient.age ? `${patient.age} Y` : ""].filter(Boolean).join(", ") || "Details pending",
+            checkedInAt: patient.createdAt ? formatVisitDate(patient.createdAt) : "Not added",
+            checkedAt: patient.createdAt,
+            source: "Supabase",
+            chiefComplaint: patient.chiefComplaint || "Not added",
+            medicalHistory: patient.medicalHistory || "Not added",
+            visits,
+            lastVisit: visits[0]
+          };
+        });
+
+        setQueueItems(mappedQueue);
+        setDirectoryPatients(directory);
+      } catch {
+        // Keep local fallback data when Supabase is unavailable.
+      }
+    }
+
+    loadSupabasePatients();
   }, []);
 
-  function createWalkInPatient(event: FormEvent<HTMLFormElement>) {
+  async function createWalkInPatient(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!newPatient.name.trim() || !newPatient.phone.trim()) {
       setNotice("Please add patient name and phone number.");
       return;
     }
 
-    const id = `P-${Date.now().toString().slice(-5)}`;
+    let id = `P-${Date.now().toString().slice(-5)}`;
+    let visitToken = "";
+    try {
+      const response = await fetch("/api/patients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: newPatient.name.trim(),
+          phone: newPatient.phone.trim(),
+          age: newPatient.age,
+          gender: newPatient.gender,
+          chiefComplaint: newPatient.complaint.trim(),
+          medicalHistory: newPatient.medicalHistory.trim()
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json() as {
+          patient?: { id?: string; patientCode?: string };
+          visitToken?: string;
+        };
+        id = result.patient?.patientCode || result.patient?.id || id;
+        visitToken = result.visitToken || "";
+      }
+    } catch {
+      // Keep local fallback when Supabase is unavailable.
+    }
+
     const now = new Date();
     const checkedInAt = now.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
     const checkedAt = now.toISOString();
@@ -352,19 +456,44 @@ export function ClinicQueueDashboard() {
       chiefComplaint: patient.complaint,
       medicalHistory: newPatient.medicalHistory.trim() || "Not added"
     }));
+    if (visitToken) {
+      window.localStorage.setItem(`healDentalVisitTokenByPatient:${id}`, visitToken);
+    }
     window.location.href = `/clinic/profile?patient=${id}`;
   }
 
-  function createAppointment(event: FormEvent<HTMLFormElement>) {
+  async function createAppointment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!newAppointment.name.trim() || !newAppointment.phone.trim() || !newAppointment.date || !newAppointment.time) {
       setNotice("Please add patient name, phone number, appointment date, and time.");
       return;
     }
 
-    const id = `P-${Date.now().toString().slice(-5)}`;
+    let id = `P-${Date.now().toString().slice(-5)}`;
     const appointmentAt = new Date(`${newAppointment.date}T${newAppointment.time}:00`);
     const checkedAt = Number.isNaN(appointmentAt.getTime()) ? new Date().toISOString() : appointmentAt.toISOString();
+    try {
+      const response = await fetch("/api/appointments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: newAppointment.name.trim(),
+          phone: newAppointment.phone.trim(),
+          startsAt: checkedAt,
+          purpose: "Appointment"
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json() as {
+          appointment?: { patient?: { id?: string; patientCode?: string } };
+        };
+        id = result.appointment?.patient?.patientCode || result.appointment?.patient?.id || id;
+      }
+    } catch {
+      // Keep local fallback when Supabase is unavailable.
+    }
+
     const patient: QueuePatient = {
       id,
       name: newAppointment.name.trim(),

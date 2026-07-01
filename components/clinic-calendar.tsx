@@ -309,19 +309,92 @@ export function ClinicCalendar() {
       }
     }
     setSettings(loadClinicSettings());
-    setItems(loadCalendarItems());
+    const localItems = loadCalendarItems();
+    setItems(localItems);
+
+    async function loadSupabaseAppointments() {
+      try {
+        const currentMonth = startOfMonth(new Date());
+        const from = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).toISOString();
+        const to = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59).toISOString();
+        const response = await fetch(`/api/appointments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+        if (!response.ok) return;
+        const result = await response.json() as {
+          appointments?: Array<{
+            id: string;
+            startsAt: string;
+            purpose?: string | null;
+            status?: string | null;
+            patient?: {
+              id?: string;
+              patientCode?: string;
+              fullName?: string;
+              phone?: string;
+            } | null;
+          }>;
+        };
+        const mapped = (result.appointments ?? []).flatMap((appointment): CalendarItem[] => {
+          const startsAt = new Date(appointment.startsAt);
+          if (Number.isNaN(startsAt.getTime()) || !appointment.patient?.fullName) return [];
+          const patientId = appointment.patient.patientCode || appointment.patient.id || appointment.id;
+          return [{
+            id: appointment.id,
+            patientId,
+            patientName: appointment.patient.fullName,
+            initials: initialsFor(appointment.patient.fullName),
+            phone: appointment.patient.phone || "",
+            time: startsAt.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }),
+            dateKey: dateKey(startsAt),
+            title: appointment.purpose || "Appointment",
+            subtitle: "Supabase appointment",
+            status: appointment.status || "Scheduled",
+            href: `/clinic/profile?patient=${patientId}`
+          }];
+        });
+        if (mapped.length) {
+          const dedupedLocal = localItems.filter((item) => !mapped.some((appointment) => appointment.patientId === item.patientId && appointment.dateKey === item.dateKey && appointment.time === item.time));
+          setItems([...mapped, ...dedupedLocal].sort((a, b) => a.time.localeCompare(b.time)));
+        }
+      } catch {
+        // Keep local fallback when Supabase is unavailable.
+      }
+    }
+
+    loadSupabaseAppointments();
   }, []);
 
-  function createAppointment(event: FormEvent<HTMLFormElement>) {
+  async function createAppointment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!newAppointment.name.trim() || !newAppointment.phone.trim() || !newAppointment.time) {
       setNotice("Please add patient name, phone number, and appointment time.");
       return;
     }
 
-    const id = `P-${Date.now().toString().slice(-5)}`;
+    let id = `P-${Date.now().toString().slice(-5)}`;
     const appointmentAt = new Date(`${selectedDate}T${newAppointment.time}:00`);
     const checkedAt = Number.isNaN(appointmentAt.getTime()) ? new Date().toISOString() : appointmentAt.toISOString();
+    try {
+      const response = await fetch("/api/appointments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: newAppointment.name.trim(),
+          phone: newAppointment.phone.trim(),
+          startsAt: checkedAt,
+          purpose: "Appointment"
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json() as {
+          appointment?: { patient?: { id?: string; patientCode?: string } };
+        };
+        id = result.appointment?.patient?.patientCode || result.appointment?.patient?.id || id;
+      }
+    } catch {
+      // Keep local fallback when Supabase is unavailable.
+    }
+
     const checkedInAt = formatAppointmentTime(newAppointment.time);
     const queuePatient: QueuePatient = {
       id,

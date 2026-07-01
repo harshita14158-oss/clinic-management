@@ -15,6 +15,7 @@ type GeneratedDocument = {
 };
 
 type PrescriptionData = {
+  visitToken?: string;
   patientName: string;
   patientId: string;
   patientPhone: string;
@@ -53,13 +54,6 @@ export function ClinicDocumentView() {
 
   useEffect(() => {
     setSettings(loadClinicSettings());
-    const session = window.localStorage.getItem("healDentalClinicSession");
-
-    if (!session) {
-      window.location.replace("/clinic");
-      return;
-    }
-
     const saved = window.localStorage.getItem("healDentalGeneratedDocument");
     if (!saved) return;
     try {
@@ -145,12 +139,17 @@ export function ClinicDocumentView() {
       const response = await fetch("/api/save-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName, dataUrl: document.url })
+        body: JSON.stringify({
+          fileName,
+          dataUrl: document.url,
+          visitToken: document.data?.visitToken,
+          type: document.kind || document.title
+        })
       });
-      const result = await response.json() as { filePath?: string; error?: string };
+      const result = await response.json() as { fileUrl?: string; error?: string };
 
-      if (response.ok && result.filePath) {
-        setDownloadNotice(`PDF saved to Downloads: ${result.filePath}`);
+      if (response.ok && result.fileUrl) {
+        setDownloadNotice(`PDF saved to Supabase Storage: ${result.fileUrl}`);
         return;
       }
     } catch {
