@@ -346,7 +346,7 @@ export function ClinicCalendar() {
             time: startsAt.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }),
             dateKey: dateKey(startsAt),
             title: appointment.purpose || "Appointment",
-            subtitle: "Supabase appointment",
+            subtitle: "Booked appointment",
             status: appointment.status || "Scheduled",
             href: `/clinic/profile?patient=${patientId}`
           }];

@@ -262,7 +262,7 @@ function mapSupabasePatient(patient: SupabasePatientRow): PatientRecord {
     checkedInAt: patient.createdAt
       ? new Date(patient.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
       : "Not added",
-    source: "Supabase",
+    source: "Patient record",
     chiefComplaint: patient.chiefComplaint || "Not added",
     medicalHistory: patient.medicalHistory || "Not added"
   };
@@ -299,7 +299,7 @@ function defaultInvoiceRows(settings: ClinicSettings): InvoiceRow[] {
 
 function visitDisplayLabel(visit: Pick<VisitHistoryItem, "id" | "label">) {
   if (visit.id === "current") return "Saved Visit";
-  return visit.label?.startsWith("Visit ") ? visit.label : `Visit ${visit.id}`;
+  return visit.label && !visit.label.startsWith("Visit ") ? visit.label : "Visit Record";
 }
 
 function formatVisitDate(value?: string) {
@@ -904,7 +904,7 @@ export function ClinicProfileEntry() {
     ? `healDentalVisitDraft:${selectedPatient.id}`
     : `healDentalVisitDraft:${selectedPatient.id}:${activeVisitId}`;
   const visitHistoryKey = `healDentalVisitHistory:${selectedPatient.id}`;
-  const activeVisitLabel = activeVisitId === "current" ? "Saved Visit" : `Visit ${activeVisitId}`;
+  const activeVisitLabel = activeVisitId === "current" ? "Saved Visit" : "Visit Record";
   const fallbackPortalToken = useMemo(() => `${selectedPatient.id}-${activeVisitId}`.replace(/[^A-Za-z0-9-]/g, ""), [selectedPatient.id, activeVisitId]);
 
   const [notice, setNotice] = useState("");
@@ -1746,7 +1746,6 @@ export function ClinicProfileEntry() {
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-muted">
                   <span>{visit.documentCount} docs</span>
                   <span>Rs. {visit.total.toLocaleString("en-IN")}</span>
-                  <span>{visit.id === "current" ? "Legacy record" : visit.id}</span>
                 </div>
               </a>
             )) : (
@@ -2291,7 +2290,7 @@ export function ClinicProfileEntry() {
                       <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gold">Rs. {visit.total.toLocaleString("en-IN")}</span>
                     </div>
                     <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted">{visit.summary}</p>
-                    <p className="mt-2 text-xs font-semibold text-muted">{visit.documentCount} document{visit.documentCount === 1 ? "" : "s"} available - {visit.id === "current" ? "Legacy record" : visit.id}</p>
+                    <p className="mt-2 text-xs font-semibold text-muted">{visit.documentCount} document{visit.documentCount === 1 ? "" : "s"} available</p>
                   </a>
                 )) : (
                   <div className="rounded-2xl border border-softgold/60 bg-white/70 p-4">

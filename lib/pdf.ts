@@ -255,6 +255,43 @@ export function downloadVisitPdf(kind: PdfKind, data: DynamicVisitPdfData) {
   return doc.output("datauristring");
 }
 
+export function downloadVisitPdfToDevice(kind: PdfKind, data: DynamicVisitPdfData) {
+  const dataUrl = downloadVisitPdf(kind, data);
+
+  if (typeof window === "undefined") {
+    return dataUrl;
+  }
+
+  const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  const objectUrl = window.URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+  const fileName = [
+    kind,
+    data.patientName || "patient",
+    data.patientId || "visit"
+  ].join("_")
+    .replace(/[^a-z0-9_-]+/gi, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+
+  const link = window.document.createElement("a");
+  link.href = objectUrl;
+  link.download = `${fileName || "heal-dental-document"}.pdf`;
+  window.document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
+
+  return dataUrl;
+}
+
 function renderPrescriptionPdf(doc: jsPDF, data: DynamicVisitPdfData) {
   const settings = loadClinicSettings();
   const gold = "#B98543";

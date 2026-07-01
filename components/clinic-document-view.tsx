@@ -136,35 +136,17 @@ export function ClinicDocumentView() {
     const fileName = documentFileName();
 
     try {
-      const response = await fetch("/api/save-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName,
-          dataUrl: document.url,
-          visitToken: document.data?.visitToken,
-          type: document.kind || document.title
-        })
-      });
-      const result = await response.json() as { fileUrl?: string; error?: string };
-
-      if (response.ok && result.fileUrl) {
-        setDownloadNotice(`PDF saved to Supabase Storage: ${result.fileUrl}`);
-        return;
-      }
-    } catch {
-      // Fall back to browser download below.
-    }
-
-    try {
-      if (!pdfObjectUrl) throw new Error("PDF preview not ready");
+      const downloadUrl = pdfObjectUrl || createPdfObjectUrl(document.url);
       const link = window.document.createElement("a");
-      link.href = pdfObjectUrl;
+      link.href = downloadUrl;
       link.download = `${fileName}.pdf`;
       window.document.body.appendChild(link);
       link.click();
       link.remove();
-      setDownloadNotice("PDF download started. If the in-app browser hides downloads, use Print / Save as PDF.");
+      if (!pdfObjectUrl) {
+        window.setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
+      }
+      setDownloadNotice("PDF download started on this device. If the in-app browser hides downloads, use Print / Save as PDF.");
     } catch {
       setDownloadNotice("Download could not start here. Please use Print / Save as PDF.");
     }

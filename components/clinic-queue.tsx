@@ -157,7 +157,7 @@ function startOfMonth(date: Date) {
 
 function visitDisplayLabel(visit: VisitHistoryItem) {
   if (visit.id === "current") return "Saved Visit";
-  return visit.label?.startsWith("Visit ") ? visit.label : `Visit ${visit.id}`;
+  return visit.label && !visit.label.startsWith("Visit ") ? visit.label : "Visit Record";
 }
 
 function hasSavedVisitDetails(visit: {
@@ -368,7 +368,7 @@ export function ClinicQueueDashboard() {
             checkedInAt: formatVisitDate(checkedAt),
             checkedAt,
             status: completed ? "Completed" : "Waiting",
-            source: "Supabase"
+            source: "Patient record"
           };
         });
 
@@ -393,7 +393,7 @@ export function ClinicQueueDashboard() {
             ageGender: [patient.gender, patient.age ? `${patient.age} Y` : ""].filter(Boolean).join(", ") || "Details pending",
             checkedInAt: patient.createdAt ? formatVisitDate(patient.createdAt) : "Not added",
             checkedAt: patient.createdAt,
-            source: "Supabase",
+            source: "Patient record",
             chiefComplaint: patient.chiefComplaint || "Not added",
             medicalHistory: patient.medicalHistory || "Not added",
             visits,

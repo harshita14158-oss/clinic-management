@@ -2,7 +2,7 @@
 
 import { ArrowLeft, ArrowRight, Bell, CalendarDays, Check, ChevronDown, ClipboardList, Download, FileText, Globe2, Headphones, IndianRupee, Lock, Mail, MapPin, Phone, Pill, ShieldCheck, Signal, User, UserRound, Wifi } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
-import { downloadVisitPdf, DynamicVisitPdfData, PdfKind } from "@/lib/pdf";
+import { downloadVisitPdfToDevice, DynamicVisitPdfData, PdfKind } from "@/lib/pdf";
 import { Logo } from "./logo";
 import { ClinicSettings, defaultClinicSettings, loadClinicSettings, phoneHref } from "@/lib/clinic-settings";
 
@@ -989,7 +989,7 @@ export function PatientPortalScreen() {
                 {portal.documentKinds.map((kind) => (
                   <button
                     key={kind}
-                    onClick={() => downloadVisitPdf(kind, data)}
+                    onClick={() => downloadVisitPdfToDevice(kind, data)}
                     className="flex w-full items-center justify-between rounded-2xl border border-softgold/60 bg-white/80 px-4 py-4 text-left transition hover:border-gold"
                   >
                     <span>
