@@ -1,9 +1,9 @@
 ﻿"use client";
 
-import { ArrowLeft, Download, Printer } from "lucide-react";
+import { ArrowLeft, Download, LayoutDashboard, MessageCircle, Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Logo } from "./logo";
-import { ClinicSettings, defaultClinicSettings, loadClinicSettings } from "@/lib/clinic-settings";
+import { ClinicSettings, defaultClinicSettings, loadClinicSettings, normalizePhoneForWhatsApp } from "@/lib/clinic-settings";
 
 type GeneratedDocument = {
   title: string;
@@ -31,6 +31,7 @@ type PrescriptionData = {
   nextVisit: string;
   invoiceItems?: Array<{ service: string; amount: string }>;
   invoiceTotal?: number;
+  paymentStatus?: string;
 };
 
 const emptyDocument: GeneratedDocument = {
@@ -84,13 +85,61 @@ export function ClinicDocumentView() {
     }
   }, [document.url]);
 
+  function documentFileName() {
+    const kind = document.kind || document.title || "document";
+    const patientName = document.data?.patientName || "patient";
+    const patientId = document.data?.patientId || "patient-id";
+    const date = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }).replace(/\s+/g, "");
+    return [kind, patientName, patientId, date]
+      .join("_")
+      .replace(/[^a-z0-9_-]+/gi, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .toLowerCase() || "heal-dental-document";
+  }
+
+  function sharePatientPortalAgain() {
+    if (!document.data?.patientId) {
+      setDownloadNotice("Open a patient document first to share the portal.");
+      return;
+    }
+
+    const token = window.localStorage.getItem(`healDentalLatestPatientPortal:${document.data.patientId}`);
+    if (!token) {
+      setDownloadNotice("Generate the patient summary once before sharing the portal again.");
+      return;
+    }
+
+    const number = normalizePhoneForWhatsApp(document.data.patientPhone || "");
+    if (!number) {
+      setDownloadNotice("Patient phone number is not valid for WhatsApp sharing.");
+      return;
+    }
+
+    const portalUrl = `${window.location.origin}/p/${token}`;
+    const firstName = document.data.patientName?.split(" ")[0] || "there";
+    const message = [
+      `Hello ${firstName},`,
+      "",
+      `Your visit documents from ${settings.clinicName} are ready here:`,
+      portalUrl,
+      "",
+      "You can open this link anytime to view or download your documents.",
+      "",
+      settings.clinicName
+    ].join("\n");
+    const whatsAppUrl = `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
+    const opened = window.open(whatsAppUrl, "_blank", "noopener,noreferrer");
+    if (!opened) window.location.assign(whatsAppUrl);
+  }
+
   async function downloadGeneratedPdf() {
     if (!document.url) {
       setDownloadNotice("Generate a document from the patient profile first.");
       return;
     }
 
-    const fileName = document.title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "heal-dental-document";
+    const fileName = documentFileName();
 
     try {
       const response = await fetch("/api/save-pdf", {
@@ -131,6 +180,22 @@ export function ClinicDocumentView() {
             Back to Patient Profile
           </a>
           <div className="flex flex-wrap gap-3">
+            <a
+              href="/clinic/dashboard"
+              className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-softgold/70 bg-white/80 px-4 text-sm font-semibold"
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              Dashboard
+            </a>
+            {document.data ? (
+              <button
+                onClick={sharePatientPortalAgain}
+                className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-softgold/70 bg-white/80 px-4 text-sm font-semibold"
+              >
+                <MessageCircle className="h-4 w-4" />
+                Share Portal Again
+              </button>
+            ) : null}
             {document.url ? (
               <button
                 onClick={downloadGeneratedPdf}
@@ -361,6 +426,7 @@ function InvoiceTemplate({ data, settings }: { data: PrescriptionData; settings:
   const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
   const items = data.invoiceItems?.length ? data.invoiceItems : [{ service: "No invoice items added", amount: "0" }];
   const total = data.invoiceTotal ?? items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const paymentStatus = data.paymentStatus || "Paid";
 
   return (
     <article className="rounded-[28px] border border-softgold/60 bg-paper p-5 shadow-card sm:p-8 print:rounded-none print:border-0 print:shadow-none">
@@ -369,11 +435,19 @@ function InvoiceTemplate({ data, settings }: { data: PrescriptionData; settings:
           <Logo />
           <p className="mt-4 text-sm font-semibold text-muted">{settings.phone} - {settings.email}</p>
         </div>
-        <div className="rounded-2xl border border-softgold/70 bg-white/70 p-4 md:min-w-64">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gold">Billed To</p>
-          <h2 className="mt-2 text-xl font-bold">{data.patientName}</h2>
-          <p className="mt-1 text-sm text-muted">{data.patientPhone}</p>
-          <p className="mt-1 text-sm text-muted">{data.ageGender}</p>
+        <div className="grid gap-3 md:min-w-72">
+          <div className="rounded-2xl border border-softgold/70 bg-white/70 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gold">Issued By</p>
+            <h2 className="mt-2 text-xl font-bold">{settings.doctorName}</h2>
+            <p className="mt-1 text-sm text-muted">{settings.doctorQualification}</p>
+            <p className="mt-1 text-sm font-semibold text-ink">Dental Registration No.: <span className="text-gold">{settings.registrationNumber}</span></p>
+          </div>
+          <div className="rounded-2xl border border-softgold/70 bg-white/70 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gold">Billed To</p>
+            <h2 className="mt-2 text-xl font-bold">{data.patientName}</h2>
+            <p className="mt-1 text-sm text-muted">{data.patientPhone}</p>
+            <p className="mt-1 text-sm text-muted">{data.ageGender}</p>
+          </div>
         </div>
       </header>
 
@@ -415,11 +489,30 @@ function InvoiceTemplate({ data, settings }: { data: PrescriptionData; settings:
             <span>Total Amount</span>
             <span className="text-2xl font-bold text-gold">Rs. {total.toLocaleString("en-IN")}</span>
           </div>
+          <div className="mt-4 flex items-center justify-between border-t border-softgold/60 pt-4 text-sm">
+            <span className="font-semibold text-muted">Payment Status</span>
+            <span className="rounded-full bg-linen px-3 py-1 font-bold text-gold">{paymentStatus}</span>
+          </div>
         </div>
       </section>
 
-      <footer className="mt-8 border-t border-softgold/70 pt-5 text-xs leading-6 text-muted">
-        {settings.clinicName} - {settings.phone} - {settings.email}
+      <section className="mt-7 grid gap-4 rounded-2xl border border-softgold/70 bg-white/70 p-5 sm:grid-cols-[1fr_auto] sm:items-center">
+        <div>
+          <p className="text-sm font-bold text-ink">Digitally generated by {settings.clinicName}</p>
+          <p className="mt-1 text-xs leading-6 text-muted">This invoice is system generated from the saved visit entry.</p>
+        </div>
+        <div className="grid h-24 w-24 place-items-center rounded-full border border-dashed border-gold text-center text-[10px] font-bold uppercase leading-4 text-gold">
+          Clinic<br />Stamp
+        </div>
+      </section>
+
+      <footer className="mt-8 grid gap-4 border-t border-softgold/70 pt-5 text-xs leading-6 text-muted sm:grid-cols-[1fr_auto] sm:items-end">
+        <p>{settings.clinicName} - {settings.phone} - {settings.email}</p>
+        <div className="sm:text-right">
+          <p className="font-bold text-ink">{settings.doctorName}</p>
+          <p>{settings.doctorQualification}</p>
+          <p>Dental Registration No.: {settings.registrationNumber}</p>
+        </div>
       </footer>
     </article>
   );

@@ -102,6 +102,7 @@ type VisitDraft = {
   nextPurpose: string;
   medicines: MedicineRow[];
   invoiceItems: InvoiceRow[];
+  paymentStatus: string;
   investigations: InvestigationRow[];
   uploadedFiles: string[];
   summaryGenerated: boolean;
@@ -866,6 +867,7 @@ export function ClinicProfileEntry() {
     { id: 1, service: "Consultation Charges", description: "", amount: defaultClinicSettings.consultationFee },
     { id: 2, service: "X-ray", description: "", amount: defaultClinicSettings.xrayFee }
   ]);
+  const [paymentStatus, setPaymentStatus] = useState("Paid");
   const [investigations, setInvestigations] = useState<InvestigationRow[]>([
     { id: 1, name: "", area: "", reason: "" }
   ]);
@@ -960,6 +962,7 @@ export function ClinicProfileEntry() {
       setNextPurpose("");
       setMedicines([{ id: 1, name: "", dosage: "", frequency: "", duration: "" }]);
       setInvoiceItems(defaultInvoiceRows(settings));
+      setPaymentStatus("Paid");
       setInvestigations([{ id: 1, name: "", area: "", reason: "" }]);
       setUploadedFiles([]);
       setSummaryGenerated(false);
@@ -996,6 +999,7 @@ export function ClinicProfileEntry() {
       setNextPurpose(draft.nextPurpose ?? "");
       setMedicines(draft.medicines?.length ? draft.medicines : [{ id: 1, name: "", dosage: "", frequency: "", duration: "" }]);
       setInvoiceItems(draft.invoiceItems?.length ? draft.invoiceItems : defaultInvoiceRows(settings));
+      setPaymentStatus(draft.paymentStatus ?? "Paid");
       setInvestigations(draft.investigations?.length ? draft.investigations : [{ id: 1, name: "", area: "", reason: "" }]);
       setUploadedFiles(draft.uploadedFiles ?? []);
       setSummaryGenerated(Boolean(draft.summaryGenerated));
@@ -1016,6 +1020,7 @@ export function ClinicProfileEntry() {
     setNextPurpose("");
     setMedicines([{ id: 1, name: "", dosage: "", frequency: "", duration: "" }]);
     setInvoiceItems(defaultInvoiceRows(settings));
+    setPaymentStatus("Paid");
     setInvestigations([{ id: 1, name: "", area: "", reason: "" }]);
     setUploadedFiles([]);
     setSummaryGenerated(false);
@@ -1095,6 +1100,7 @@ export function ClinicProfileEntry() {
         amount: item.amount
       })),
       invoiceTotal: total,
+      paymentStatus,
       consentBenefits: buildConsentList(treatments, "benefits").split("\n").map((item) => item.replace(/^- /, "")),
       consentRisks: buildConsentList(treatments, "risks").split("\n").map((item) => item.replace(/^- /, "")),
       consentAlternatives: buildConsentAlternatives(treatments).split("\n"),
@@ -1167,6 +1173,7 @@ export function ClinicProfileEntry() {
       nextPurpose,
       medicines,
       invoiceItems,
+      paymentStatus,
       investigations,
       uploadedFiles,
       summaryGenerated: options?.summaryGeneratedOverride ?? summaryGenerated,
@@ -1974,6 +1981,19 @@ export function ClinicProfileEntry() {
               <div className="mt-5 flex justify-end text-xl font-bold">
                 Total <span className="ml-3 text-gold">Rs. {total.toLocaleString("en-IN")}</span>
               </div>
+              <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
+                <label className="text-sm font-semibold text-muted" htmlFor="payment-status">Payment Status</label>
+                <select
+                  id="payment-status"
+                  className="min-h-11 rounded-2xl border border-softgold/70 bg-white px-4 text-sm font-semibold text-ink outline-none focus:border-gold"
+                  value={paymentStatus}
+                  onChange={(event) => setPaymentStatus(event.target.value)}
+                >
+                  <option>Paid</option>
+                  <option>Partial</option>
+                  <option>Unpaid</option>
+                </select>
+              </div>
             </Card>
 
             <Card className="p-5 sm:p-6">
@@ -2283,7 +2303,11 @@ function documentPreviewSections(kind: PdfKind, data: DynamicVisitPdfData) {
   if (kind === "invoice") {
     return [{
       title: "Charges",
-      lines: data.invoiceItems.length ? [...data.invoiceItems.map((item) => `${item.service}: Rs. ${item.amount || "0"}`), `Total: Rs. ${data.invoiceTotal.toLocaleString("en-IN")}`] : ["No invoice items added."]
+      lines: data.invoiceItems.length ? [
+        ...data.invoiceItems.map((item) => `${item.service}: Rs. ${item.amount || "0"}`),
+        `Total: Rs. ${data.invoiceTotal.toLocaleString("en-IN")}`,
+        `Payment Status: ${data.paymentStatus || "Paid"}`
+      ] : ["No invoice items added."]
     }];
   }
 

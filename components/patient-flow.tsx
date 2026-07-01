@@ -863,6 +863,7 @@ export function PatientPortalScreen() {
                 <IndianRupee className="h-5 w-5 text-gold" />
                 <p className="mt-3 text-sm font-semibold text-muted">Invoice Total</p>
                 <p className="mt-1 text-xl font-bold text-ink">Rs. {data.invoiceTotal.toLocaleString("en-IN")}</p>
+                <p className="mt-2 text-xs font-bold text-gold">{data.paymentStatus || "Paid"}</p>
               </div>
               <div className="rounded-[24px] border border-softgold/60 bg-paper p-4 shadow-card">
                 <CalendarDays className="h-5 w-5 text-gold" />

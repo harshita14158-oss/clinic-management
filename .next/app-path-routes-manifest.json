@@ -1,0 +1,20 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/api/consents/route": "/api/consents",
+  "/api/patients/route": "/api/patients",
+  "/api/save-pdf/route": "/api/save-pdf",
+  "/api/qr/route": "/api/qr",
+  "/checked/page": "/checked",
+  "/checkin/page": "/checkin",
+  "/clinic/calendar/page": "/clinic/calendar",
+  "/clinic/case/page": "/clinic/case",
+  "/clinic/dashboard/page": "/clinic/dashboard",
+  "/clinic/document/page": "/clinic/document",
+  "/clinic/page": "/clinic",
+  "/clinic/profile/page": "/clinic/profile",
+  "/clinic/settings/page": "/clinic/settings",
+  "/consent/page": "/consent",
+  "/p/[visitId]/page": "/p/[visitId]",
+  "/page": "/",
+  "/register/page": "/register"
+}
